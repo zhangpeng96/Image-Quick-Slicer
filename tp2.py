@@ -1,6 +1,8 @@
 import tkinter as tk
 from PIL import Image, ImageTk
 
+from bisect import bisect_left
+
 import win32gui
 import win32con
 import win32api
@@ -18,8 +20,16 @@ class App():
       self.image = Image.new('RGB', (260,100), color="#ff0000")
       self.image_frame = tk.Label(self.win)
       self.imaging = None
+      self.frame_pos = [0, 0, 0, 0]
+      self.frame_rect = None
+      self.frame_state = 0
       self.cursor_x, self.cursor_y = None, None
       self.draw_lines = []
+      self.slices = {
+         'ColumnMisplace': {
+            'record': { 'column': [], 'row': [] }
+         }
+      }
       self.width, self.height = 0, 0
       self.scale = 1
       self.initial()
@@ -64,9 +74,19 @@ class App():
       x, y = e.x, e.y
       w, h = self.win.winfo_width(), self.win.winfo_height()
       if self.mode == 1:
-         self.draw_lines.append( self.canvas.create_line(x, 0, x, h, width=3, fill="#cc0000") )
+         self.draw_lines.append( self.canvas.create_line(x, 0, x, h, width=2, fill="#cc0000") )
+         self.slices['ColumnMisplace']['record']['column'].append(x)
+         self.slices['ColumnMisplace']['record']['column'].sort()
+         print(self.slices['ColumnMisplace']['record'])
       elif self.mode == 2:
-         self.draw_lines.append( self.canvas.create_line(0, y, w, y, width=3, fill="#0000cc") )
+         border = bisect_left(self.slices['ColumnMisplace']['record']['column'], x)
+         border_left = self.slices['ColumnMisplace']['record']['column'][border-1]
+         border_right = self.slices['ColumnMisplace']['record']['column'][border]
+         self.draw_lines.append( self.canvas.create_line(border_left, y, border_right, y, width=2, fill="#0000cc") )
+      elif self.mode == 3:
+         if self.frame_state == 0:
+            self.frame_pos[0], self.frame_pos[1] = x, y
+         self.frame_state = (self.frame_state + 1) % 3
 
       # if x == None or x == 0:
          # self.draw_lines.append( self.canvas.create_line(0, y, w, y, width=3, fill="#cc0000") )
@@ -74,8 +94,14 @@ class App():
          # self.draw_lines.append( self.canvas.create_line(x, 0, x, h, width=3, fill="#cc0000") )
 
    def _remove_lines(self, e):
-      if self.draw_lines:
-         self.canvas.delete(self.draw_lines.pop())
+      if self.mode == 1 or self.mode == 2:
+         if self.draw_lines:
+            self.canvas.delete(self.draw_lines.pop())
+      elif self.mode == 3:
+         if self.frame_rect:
+            self.canvas.delete(self.frame_rect)
+            self.frame_rect = None
+            self.frame_state = 0
 
    def _move_cursor(self, e):
       self._refresh_cursor()
@@ -87,8 +113,21 @@ class App():
          self.cursor_y = self.canvas.create_line(0, y, w, y, width=1, dash=(3,3))
          self.cursor_x = self.canvas.create_line(x, 0, x, h, width=1)
       elif self.mode == 2:
-         self.cursor_y = self.canvas.create_line(0, y, w, y, width=1)
+         border = bisect_left(self.slices['ColumnMisplace']['record']['column'], x)
+         border_left = self.slices['ColumnMisplace']['record']['column'][border-1]
+         border_right = self.slices['ColumnMisplace']['record']['column'][border]
+         self.cursor_y = self.canvas.create_line(border_left, y, border_right, y, width=1)
+         # self.cursor_y = self.canvas.create_line(0, y, w, y, width=1)
          self.cursor_x = self.canvas.create_line(x, 0, x, h, width=1, dash=(3,3))
+      elif self.mode == 3:
+         if self.frame_state == 0:
+            self.canvas.itemconfig(self.text_pos, text="设定边框A点(x={}, y={})".format(px, py))
+         if self.frame_state == 1:
+            self.canvas.itemconfig(self.text_pos, text="设定边框B点(x={}, y={})".format(px, py))
+            x1, y1, _, _ = self.frame_pos
+            self.canvas.delete(self.frame_rect)
+            self.frame_rect = self.canvas.create_rectangle(x1, y1, x, y, width=2, outline="#cc0000")
+         # self.text_pos.config(text="??")
 
    def _test(self, e):
       if e.delta > 0:
